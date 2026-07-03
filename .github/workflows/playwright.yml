@@ -1,0 +1,104 @@
+name: Playwright Test Suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Nightly regression run at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+
+  api-tests:
+    name: API Tests
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:api
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-report
+          path: playwright-report/
+          retention-days: 14
+
+  ui-tests:
+    name: UI Tests (${{ matrix.project }})
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-ui, firefox-ui, webkit-ui]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: npx playwright test --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-report-${{ matrix.project }}
+          path: playwright-report/
+          retention-days: 14
+
+  visual-and-a11y:
+    name: Visual & Accessibility
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:visual
+      - run: npm run test:a11y
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-a11y-report
+          path: playwright-report/
+          retention-days: 14
+
+  publish-report:
+    name: Publish Allure Report
+    if: always()
+    needs: [api-tests, ui-tests, visual-and-a11y]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Notify summary
+        run: echo "### Test run complete — see uploaded artifacts for HTML reports" >> $GITHUB_STEP_SUMMARY

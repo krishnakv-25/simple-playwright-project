@@ -1,0 +1,13 @@
+services:
+  playwright:
+    build: .
+    container_name: simple-playwright-project
+    environment:
+      - CI=true
+      - ENV=dev
+      - HEADLESS=true
+    volumes:
+      - ./playwright-report:/app/playwright-report
+      - ./test-results:/app/test-results
+      - ./allure-results:/app/allure-results
+    ipc: host
